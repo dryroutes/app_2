@@ -10,7 +10,7 @@ BASE_URL = "https://raw.githubusercontent.com/dryroutes/app_2/main/"
 
 # Archivos fragmentados
 NUM_NODOS = 4
-NUM_ARISTAS = 15
+NUM_ARISTAS = 14
 
 @st.cache_data
 def cargar_grafo_fragmentado():
