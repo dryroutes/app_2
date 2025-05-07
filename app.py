@@ -2,67 +2,48 @@ import streamlit as st
 import networkx as nx
 import requests
 import json
-from streamlit_folium import st_folium
-import folium
-from folium import Marker, PolyLine
+import os
+from itertools import chain
 
-st.set_page_config(page_title="DryRoutes", layout="wide")
-st.title("🌊 Rutas seguras ante riesgo de inundación")
+# URL base de GitHub
+BASE_URL = "https://raw.githubusercontent.com/dryroutes/app_2/main/"
 
-# ---------------------- CARGA DEL GRAFO ----------------------
+# Archivos fragmentados
+NUM_NODOS = 4
+NUM_ARISTAS = 14
+
 @st.cache_data
 def cargar_grafo_fragmentado():
+    # Descargar y cargar nodos
+    nodos = []
+    for i in range(1, NUM_NODOS + 1):
+        url = f"{BASE_URL}nodos_{i}.json"
+        res = requests.get(url)
+        res.raise_for_status()
+        nodos.extend(json.loads(res.content.decode("utf-8")))
+
+    # Descargar y cargar aristas
+    aristas = []
+    for i in range(1, NUM_ARISTAS + 1):
+        url = f"{BASE_URL}aristas_{i}.json"
+        res = requests.get(url)
+        res.raise_for_status()
+        aristas.extend(json.loads(res.content.decode("utf-8")))
+
+    # Construir el grafo
     G = nx.DiGraph()
-    base_url = "https://raw.githubusercontent.com/dryroutes/app_2/main/"
+    for nodo in nodos:
+        G.add_node(nodo["id"], **{k: v for k, v in nodo.items() if k != "id"})
 
-    # Cargar nodos
-    for i in range(1, 6):  # nodos_1.json a nodos_5.json
-        url = base_url + f"nodos_{i}.json"
-        response = requests.get(url)
-        nodos = json.loads(response.content)
-        for nodo in nodos:
-            G.add_node(nodo["id"], x=nodo["x"], y=nodo["y"])
-
-    # Cargar aristas
-    for i in range(1, 16):  # aristas_1.json a aristas_15.json
-        url = base_url + f"aristas_{i}.json"
-        response = requests.get(url)
-        aristas = json.loads(response.content)
-        for arista in aristas:
-            G.add_edge(arista["origen"], arista["destino"],
-                       costo_total=arista["costo_total"],
-                       tiempo=arista["tiempo"],
-                       distancia=arista["distancia"])
+    for arista in aristas:
+        G.add_edge(arista["origen"], arista["destino"], **{k: v for k, v in arista.items() if k not in ["origen", "destino"]})
 
     return G
 
+# --- APP Streamlit ---
+st.title("🌊 Rutas seguras ante riesgo de inundación")
+
+# Cargar grafo
 G = cargar_grafo_fragmentado()
-st.success(f"Grafo cargado con {G.number_of_nodes()} nodos y {G.number_of_edges()} aristas.")
 
-# ---------------------- INTERFAZ ----------------------
-nodos_disponibles = list(G.nodes())
-
-origen = st.selectbox("📍 Nodo de origen", nodos_disponibles)
-destino = st.selectbox("🏁 Nodo de destino", nodos_disponibles)
-criterio = st.radio("¿Qué quieres minimizar?", ["costo_total", "tiempo"], index=0)
-
-if st.button("Calcular ruta"):
-    try:
-        ruta = nx.shortest_path(G, source=origen, target=destino, weight=criterio)
-        st.success("Ruta encontrada!")
-
-        # Mostrar en mapa
-        m = folium.Map(location=[G.nodes[ruta[0]]['y'], G.nodes[ruta[0]]['x']], zoom_start=14)
-        puntos = []
-
-        for nodo in ruta:
-            x = G.nodes[nodo]['x']
-            y = G.nodes[nodo]['y']
-            puntos.append((y, x))
-            Marker(location=(y, x), tooltip=f"Nodo {nodo}").add_to(m)
-
-        PolyLine(locations=puntos, color="blue", weight=5).add_to(m)
-        st_folium(m, width=700, height=500)
-
-    except nx.NetworkXNoPath:
-        st.error(f"No se pudo calcular la ruta: No hay camino entre {origen} y {destino}.")
+st.success(f"Grafo cargado con {len(G.nodes)} nodos y {len(G.edges)} aristas.")
