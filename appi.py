@@ -77,13 +77,16 @@ if st.button("Calcular ruta"):
         st.success(f"Ruta encontrada con {len(ruta)} nodos. {criterio} total: {peso_total:.2f}")
 
         # Verificar que todos los nodos tengan coordenadas válidas
-        puntos = []
-        for nodo in ruta:
-            datos = G.nodes[nodo]
-            if "x" in datos and "y" in datos:
-                puntos.append((datos["y"], datos["x"]))
-            else:
-                st.warning(f"Nodo {nodo} no tiene coordenadas. Ruta parcial.")
+       puntos = [(G.nodes[n]["y"], G.nodes[n]["x"]) for n in ruta if "y" in G.nodes[n] and "x" in G.nodes[n]]
+        if len(puntos) >= 2:
+            Marker(puntos[0], tooltip="Inicio", icon=folium.Icon(color="green")).add_to(m)
+            Marker(puntos[-1], tooltip="Destino", icon=folium.Icon(color="red")).add_to(m)
+            PolyLine(puntos, color="blue", weight=5).add_to(m)
+            st_folium(m, width=800, height=500)
+        elif len(puntos) == 1:
+            st.warning("⚠️ Ruta con un solo nodo: no se puede pintar el mapa.")
+        else:
+    st.error("❌ No se pudo pintar el mapa: nodos sin coordenadas válidas.")
 
         if len(puntos) >= 2:
             import folium
