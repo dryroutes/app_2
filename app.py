@@ -1,84 +1,68 @@
 import streamlit as st
 import networkx as nx
 import requests
-import zipfile
 import json
-from io import BytesIO
+from streamlit_folium import st_folium
 import folium
 from folium import Marker, PolyLine
-from streamlit_folium import st_folium
 
 st.set_page_config(page_title="DryRoutes", layout="wide")
 st.title("🌊 Rutas seguras ante riesgo de inundación")
 
-# URL directa al .zip desde GitHub (raw)
-ZIP_URL = "https://raw.githubusercontent.com/dryroutes/app2/main/grafo_tiny.zip"
-
+# ---------------------- CARGA DEL GRAFO ----------------------
 @st.cache_data
-def cargar_grafo_desde_zip(url_zip):
+def cargar_grafo_fragmentado():
     G = nx.DiGraph()
+    base_url = "https://raw.githubusercontent.com/dryroutes/app_2/main/"
 
-    # Descargar el ZIP
-    response = requests.get(url_zip)
-    z = zipfile.ZipFile(BytesIO(response.content))
+    # Cargar nodos
+    for i in range(1, 6):  # nodos_1.json a nodos_5.json
+        url = base_url + f"nodos_{i}.json"
+        response = requests.get(url)
+        nodos = json.loads(response.content)
+        for nodo in nodos:
+            G.add_node(nodo["id"], x=nodo["x"], y=nodo["y"])
 
-    # Leer todos los archivos de nodos
-    nodos = []
-    for filename in z.namelist():
-        if filename.startswith("nodos_") and filename.endswith(".json"):
-            with z.open(filename) as f:
-                nodos.extend(json.load(f))
-
-    # Leer todos los archivos de aristas
-    aristas = []
-    for filename in z.namelist():
-        if filename.startswith("aristas_") and filename.endswith(".json"):
-            with z.open(filename) as f:
-                aristas.extend(json.load(f))
-
-    # Crear nodos en el grafo
-    for nodo in nodos:
-        G.add_node(nodo["id"], x=nodo["x"], y=nodo["y"])
-
-    # Crear aristas en el grafo
-    for arista in aristas:
-        G.add_edge(
-            arista["origen"], arista["destino"],
-            costo_total=arista["costo_total"],
-            tiempo=arista["tiempo"],
-            distancia=arista["distancia"]
-        )
+    # Cargar aristas
+    for i in range(1, 16):  # aristas_1.json a aristas_15.json
+        url = base_url + f"aristas_{i}.json"
+        response = requests.get(url)
+        aristas = json.loads(response.content)
+        for arista in aristas:
+            G.add_edge(arista["origen"], arista["destino"],
+                       costo_total=arista["costo_total"],
+                       tiempo=arista["tiempo"],
+                       distancia=arista["distancia"])
 
     return G
 
-# ----------------- CARGA DEL GRAFO -----------------
+G = cargar_grafo_fragmentado()
+st.success(f"Grafo cargado con {G.number_of_nodes()} nodos y {G.number_of_edges()} aristas.")
 
-with st.spinner("Cargando grafo desde GitHub..."):
-    G = cargar_grafo_desde_zip(ZIP_URL)
-    st.success(f"Grafo cargado con {G.number_of_nodes()} nodos y {G.number_of_edges()} aristas.")
+# ---------------------- INTERFAZ ----------------------
+nodos_disponibles = list(G.nodes())
 
-# ----------------- INTERFAZ DE RUTAS -----------------
-
-st.subheader("📍 Selección de ruta")
-
-nodos_disponibles = list(G.nodes)
 origen = st.selectbox("📍 Nodo de origen", nodos_disponibles)
 destino = st.selectbox("🏁 Nodo de destino", nodos_disponibles)
-criterio = st.radio("¿Qué quieres minimizar?", ["costo_total", "tiempo"])
+criterio = st.radio("¿Qué quieres minimizar?", ["costo_total", "tiempo"], index=0)
 
 if st.button("Calcular ruta"):
     try:
         ruta = nx.shortest_path(G, source=origen, target=destino, weight=criterio)
-        st.success(f"Ruta calculada con {len(ruta)} nodos.")
+        st.success("Ruta encontrada!")
 
         # Mostrar en mapa
-        m = folium.Map(location=[G.nodes[origen]["y"], G.nodes[origen]["x"]], zoom_start=13)
-        coords = [(G.nodes[n]["y"], G.nodes[n]["x"]) for n in ruta]
-        PolyLine(coords, color="blue", weight=5).add_to(m)
-        Marker(coords[0], tooltip="Inicio", icon=folium.Icon(color="green")).add_to(m)
-        Marker(coords[-1], tooltip="Destino", icon=folium.Icon(color="red")).add_to(m)
+        m = folium.Map(location=[G.nodes[ruta[0]]['y'], G.nodes[ruta[0]]['x']], zoom_start=14)
+        puntos = []
 
-        st_folium(m, height=500)
+        for nodo in ruta:
+            x = G.nodes[nodo]['x']
+            y = G.nodes[nodo]['y']
+            puntos.append((y, x))
+            Marker(location=(y, x), tooltip=f"Nodo {nodo}").add_to(m)
+
+        PolyLine(locations=puntos, color="blue", weight=5).add_to(m)
+        st_folium(m, width=700, height=500)
 
     except nx.NetworkXNoPath:
-        st.error(f"No se pudo calcular la ruta: No path between {origen} and {destino}.")
+        st.error(f"No se pudo calcular la ruta: No hay camino entre {origen} y {destino}.")
