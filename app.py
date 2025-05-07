@@ -48,19 +48,17 @@ G = cargar_grafo_fragmentado()
 
 st.success(f"Grafo cargado con {len(G.nodes)} nodos y {len(G.edges)} aristas.")
 
-
 # --- VERIFICAR CONECTIVIDAD ---
 st.subheader("📊 Conectividad del grafo")
 
 if nx.is_weakly_connected(G):
-    st.info("🔗 El grafo es débilmente conexo (todos los nodos están al menos conectados por alguna dirección).")
+    st.info("🔗 El grafo es débilmente conexo.")
 else:
     st.warning("⚠️ El grafo NO es débilmente conexo.")
 
 num_componentes = nx.number_weakly_connected_components(G)
 st.write(f"Componentes conexas encontradas: `{num_componentes}`")
 
-# Mostrar tamaño de cada componente (solo si hay más de 1)
 if num_componentes > 1:
     componentes = sorted([len(c) for c in nx.weakly_connected_components(G)], reverse=True)
     st.write("Tamaño de las componentes (mayores primero):", componentes[:5])
@@ -79,18 +77,29 @@ if st.button("Calcular ruta"):
         peso_total = nx.path_weight(G, ruta, weight=criterio)
         st.success(f"Ruta encontrada con {len(ruta)} nodos. {criterio} total: {peso_total:.2f}")
 
-        # Mostrar mapa
-        import folium
-        from streamlit_folium import st_folium
-        from folium import Marker, PolyLine
+        # Verificar que todos los nodos tengan coordenadas válidas
+        puntos = []
+        for nodo in ruta:
+            datos = G.nodes[nodo]
+            if "x" in datos and "y" in datos:
+                puntos.append((datos["y"], datos["x"]))
+            else:
+                st.warning(f"Nodo {nodo} no tiene coordenadas. Ruta parcial.")
 
-        m = folium.Map(location=[G.nodes[origen]["y"], G.nodes[origen]["x"]], zoom_start=14)
-        puntos = [(G.nodes[n]["y"], G.nodes[n]["x"]) for n in ruta]
-        Marker(puntos[0], tooltip="Inicio", icon=folium.Icon(color="green")).add_to(m)
-        Marker(puntos[-1], tooltip="Destino", icon=folium.Icon(color="red")).add_to(m)
-        PolyLine(puntos, color="blue", weight=5).add_to(m)
-        st_folium(m, width=800, height=500)
+        if len(puntos) >= 2:
+            import folium
+            from streamlit_folium import st_folium
+            from folium import Marker, PolyLine
+
+            m = folium.Map(location=puntos[0], zoom_start=14)
+            Marker(puntos[0], tooltip="Inicio", icon=folium.Icon(color="green")).add_to(m)
+            Marker(puntos[-1], tooltip="Destino", icon=folium.Icon(color="red")).add_to(m)
+            PolyLine(puntos, color="blue", weight=5).add_to(m)
+            st_folium(m, width=800, height=500)
+        else:
+            st.error("❌ No se pudo pintar el mapa: nodos sin coordenadas válidas.")
 
     except nx.NetworkXNoPath:
         st.error("❌ No se pudo calcular la ruta: no hay conexión entre los nodos seleccionados.")
-
+    except Exception as e:
+        st.exception(f"⛔ Error inesperado: {e}")
